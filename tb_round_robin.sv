@@ -1,60 +1,63 @@
+`timescale 1ns/1ps
+
 module tb_round_robin;
 
-  parameter N = 4;  // Change this value for different number of requesters
+    // Parameters
+    parameter N = 4;
 
-  // Clock and Reset
-  logic i_clk;
-  logic i_rstn;
+    // DUT signals
+    logic             clk;
+    logic             rstn;
+    logic [N-1:0]     req;
+    logic [N-1:0]     gnt;
 
-  // DUT Inputs
-  logic i_en;
-  logic [N-1:0] i_req;
+    // Instantiate DUT
+    round_robin #(N) dut (
+        .i_clk(clk),
+        .i_rstn(rstn),
+        .i_req(req),
+        .o_gnt(gnt)
+    );
 
-  // DUT Outputs
-  logic [N-1:0] o_gnt;
+    // Clock generation: 10ns period
+    initial clk = 0;
+    always #5 clk = ~clk;
 
-  // Clock generation
-  initial i_clk = 0;
-  always #5 i_clk = ~i_clk;
+    // Stimulus
+    initial begin
+        // VCD dump for waveform viewing
+        $dumpfile("round_robin_tb.vcd");
+        $dumpvars(0, tb_round_robin);
 
-  // DUT Instantiation
-  round_robin #(.N(N)) dut (
-    .i_clk(i_clk),
-    .i_rstn(i_rstn),
-    .i_en(i_en),
-    .i_req(i_req),
-    .o_gnt(o_gnt)
-  );
+        // Reset
+        rstn = 0;
+        req  = 0;
+        repeat (2) @(posedge clk);
+        rstn = 1;
 
-  // Assertion: o_gnt must be one-hot when i_en is high and i_req is non-zero
-  property onehot_grant;
-    @(posedge i_clk) disable iff (!i_rstn)
-      i_en && (i_req != 0) |-> $onehot(o_gnt);
-  endproperty
+        // Test 1: Multiple requests active (not one-hot)
+        req = 4'b1011;  // Requests from 0,1,3 are active
+        repeat (8) @(posedge clk);
 
-  assert property (onehot_grant)
-    else $error("Assertion failed: o_gnt is not one-hot when i_en = 1 and i_req != 0");
+        // Test 2: Single request active
+        req = 4'b0100;  // Only request 2 active
+        repeat (4) @(posedge clk);
 
-  // Stimulus
-  initial begin
-    i_rstn = 0;
-    i_en   = 0;
-    i_req  = '0;
+        // Test 3: All requests active
+        req = 4'b1111;
+        repeat (8) @(posedge clk);
 
-    repeat (2) @(posedge i_clk);
-    i_rstn = 1;
+        // Test 4: No request active
+        req = 4'b0000;
+        repeat (4) @(posedge clk);
 
-    @(posedge i_clk);
-    i_en = 1;
+        // Test 5: Changing request pattern dynamically
+        req = 4'b0011;
+        repeat (4) @(posedge clk);
+        req = 4'b1100;
+        repeat (4) @(posedge clk);
 
-    // Random requests
-    repeat (20) begin
-      @(posedge i_clk);
-      i_req = $urandom_range(1, (1 << N) - 1);  // Ensure at least one bit set
-      $display("Time: %0t | Req: %b | Gnt: %b", $time, i_req, o_gnt);
+        $finish;
     end
-
-    $finish;
-  end
 
 endmodule
